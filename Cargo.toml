@@ -1,0 +1,12 @@
+[package]
+name = "DiamondsImagerGenerator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.31", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+pdf-canvas = "0.7.0"
+image = "0.25.5"
