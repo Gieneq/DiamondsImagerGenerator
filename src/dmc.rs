@@ -6,7 +6,7 @@ use std::{
 
 use ditherum::{
     color::ColorRGB, 
-    palette::PaletteRGB
+    palette::{errors::PaletteError, PaletteRGB}
 };
 
 use image::RgbImage;
@@ -36,6 +36,12 @@ pub enum DmcError {
 
     #[error("Data in DMC palette is not unique")]
     DmcDataNotUnique,
+
+    #[error("PaletteDitherumError failed, reason={0}")]
+    PaletteDitherumError(#[from] PaletteError),
+
+    #[error("ColorNotFound")]
+    ColorNotFound,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -153,20 +159,50 @@ impl PaletteDmc {
         Ok(dmc_palette)
     }
 
-    pub fn get_subset_closest_by_lab_to(mut self, rgb_palette: PaletteRGB) -> Self {
-        let mut result_dmc_vec: Vec<Dmc> = vec![];
+    pub fn get_subset_closest_to(self, img_rgb: &RgbImage, colors_count: usize) -> Result<Self, DmcError> {
+        // let mut result_dmc_vec: Vec<Dmc> = vec![];
 
-        rgb_palette.iter().for_each(|matched_color| {
-            let closest_color = PaletteRGB::from(&self).find_closest_by_rgb(matched_color);
+        // rgb_palette.iter().for_each(|matched_color| {
+        //     let closest_color = PaletteRGB::from(&self).find_closest_by_rgb(matched_color);
 
-            // find line & move it out
-            let color_index = self.0.iter().position(|dmc| dmc.color == closest_color).expect("Should be inside DMC Palette");
-            let removed_dmc = self.0.remove(color_index);
-            println!("closest:{:?} ~ {:?}", removed_dmc, matched_color);
-            result_dmc_vec.push(removed_dmc);
-        });
+        //     // find line & move it out
+        //     let color_index = self.0.iter().position(|dmc| dmc.color == closest_color).expect("Should be inside DMC Palette");
+        //     let removed_dmc = self.0.remove(color_index);
+        //     println!("closest:{:?} ~ {:?}", removed_dmc, matched_color);
+        //     result_dmc_vec.push(removed_dmc);
+        // });
 
-        Self(result_dmc_vec)
+        let rgb_palette = PaletteRGB::from(&self);
+        let subset_palette = rgb_palette.clone().try_find_closest_subset_with_image(
+            colors_count, 
+            img_rgb, 
+            true);
+
+        let subset_palette = match subset_palette {
+            Ok(palette) => palette,
+            Err(e) => {
+                if let PaletteError::RequestedTooManyColors { requested: _, possible } = e {
+                    println!("RequestedTooManyColors: {e}");
+                    rgb_palette.try_find_closest_subset_with_image(
+                        possible, 
+                        img_rgb, 
+                        true)?
+                } else {
+                    return Err(e.into());
+                }
+            }
+        };
+
+        let result_dmc_vec: Option<Vec<Dmc>> = subset_palette.iter()
+            .map(|color| {
+                //find in DMC record 
+                self.find_color_dmc(*color)
+            })
+            .collect();
+
+        let result_dmc_vec = result_dmc_vec.ok_or(DmcError::ColorNotFound)?;
+
+        Ok(Self(result_dmc_vec))
     }
 
     pub fn find_color_dmc(&self, color: ColorRGB) -> Option<Dmc> {
@@ -239,11 +275,31 @@ fn test_loading_dmc_palette() {
 }
 
 #[test]
-fn test_finding_closest_dmc() {
-    let palette = PaletteDmc::load_dmc_palette().unwrap();
-    let some_palette = PaletteRGB::primary_bw();
-    let expected_colors_count = some_palette.len();
+fn test_finding_closest_dmc_1_color_image() {
+    let one_color_iamge = image::RgbImage::new(20, 20);
+    let expected_colors_count = 1;
 
-    let closest_palette = palette.get_subset_closest_by_lab_to(some_palette);
+    let palette = PaletteDmc::load_dmc_palette().unwrap();
+
+    let closest_palette: Result<PaletteDmc, DmcError> = palette.get_subset_closest_to(&one_color_iamge, expected_colors_count);
+    assert!(closest_palette.is_ok());
+
+    let closest_palette = closest_palette.unwrap();
+    assert_eq!(expected_colors_count, closest_palette.len());
+}
+
+#[test]
+fn test_finding_closest_dmc_not_enough_colors() {
+    let one_color_iamge = image::RgbImage::new(20, 20);
+    let requested_colors_count = 2;
+    let expected_colors_count = 1;
+    assert_ne!(expected_colors_count, requested_colors_count);
+
+    let palette = PaletteDmc::load_dmc_palette().unwrap();
+
+    let closest_palette: Result<PaletteDmc, DmcError> = palette.get_subset_closest_to(&one_color_iamge, requested_colors_count);
+    assert!(closest_palette.is_ok());
+
+    let closest_palette = closest_palette.unwrap();
     assert_eq!(expected_colors_count, closest_palette.len());
 }

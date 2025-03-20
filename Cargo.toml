@@ -1,5 +1,5 @@
 [package]
-name = "DiamondsImagerGenerator"
+name = "diamonds_imager_generator"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,6 +10,6 @@ serde_json = "1.0"
 
 pdf-canvas = "0.7.0"
 image = "0.25.5"
-ditherum = { git = "https://github.com/Gieneq/Ditherum.git", version = "*" }
+ditherum = { git = "https://github.com/Gieneq/Ditherum.git", version = "0.2.1" }
 millimeter = "0.1.0"
 thiserror = "2.0.12"

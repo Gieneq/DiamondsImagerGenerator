@@ -3,20 +3,6 @@
 version = 4
 
 [[package]]
-name = "DiamondsImagerGenerator"
-version = "0.1.0"
-dependencies = [
- "clap",
- "ditherum",
- "image",
- "millimeter",
- "pdf-canvas",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -363,9 +349,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
 
 [[package]]
+name = "diamonds_imager_generator"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ditherum",
+ "image",
+ "millimeter",
+ "pdf-canvas",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "ditherum"
-version = "0.2.0"
-source = "git+https://github.com/Gieneq/Ditherum.git#ab16e020a19e3b30209d62306167388961edfd7c"
+version = "0.2.1"
+source = "git+https://github.com/Gieneq/Ditherum.git#a0001b5bf705e9f428d3fe1ba0c532431e45227e"
 dependencies = [
  "anyhow",
  "clap",

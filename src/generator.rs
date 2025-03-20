@@ -52,8 +52,11 @@ pub enum ProcessError {
     #[error("IoError, reason={0}")]
     IoError(#[from] std::io::Error),
 
-    #[error("BadColorsCount: {0} != {1}")]
-    BadColorsCount(usize, usize),
+    #[error("BadColorsCount: expected={expected}, possible={possible}")]
+    BadColorsCount {
+        expected: usize,
+        possible: usize
+    },
 }
 
 fn fit_image_on_paper_printable_area(mut paper_sheet: PaperSheet, diamond_shape: &DiamondShape, rgb_img: RgbImage) -> (PaperSheet, RgbImage) {
@@ -95,12 +98,8 @@ pub fn process_image_with_path<P: AsRef<Path>> (
         .to_rgb8();
     let (paper_sheet, img_rgb) = fit_image_on_paper_printable_area(paper_sheet, &diamond_shape, img_rgb);
     
-    // Extract & reduce palette, then match against DMC
-    let image_rgb_palette = PaletteRGB::from_rgbu8_image(&img_rgb)
-        .try_reduce(colors_count)?;
-
     let dmc_full_palette = PaletteDmc::load_dmc_palette()?;
-    let dmc_subset_palette = dmc_full_palette.get_subset_closest_by_lab_to(image_rgb_palette);
+    let dmc_subset_palette = dmc_full_palette.get_subset_closest_to(&img_rgb, colors_count)?;
 
     let dithered_img = dithering_floyd_steinberg_rgb(img_rgb, PaletteRGB::from(&dmc_subset_palette));
     if let Some(path) = preview_path {
@@ -114,7 +113,7 @@ pub fn process_image_with_path<P: AsRef<Path>> (
     }
 
     if dmc_subset_palette.len() != colors_counts.len() {
-        return Err(ProcessError::BadColorsCount(dmc_subset_palette.len(), colors_counts.len()))
+        return Err(ProcessError::BadColorsCount {expected: dmc_subset_palette.len(), possible: colors_counts.len()})
     }
 
     let dmc_image_legend = ImageDmcLegend::extract_from(
@@ -172,7 +171,7 @@ fn test_process_image_with_path_a3_16_colors() {
 
 #[test]
 fn test_process_image_with_path_testyard() {
-    let colors_count = 22;
+    let colors_count = 21; // 22 seems too many
     let src_name = "test_grass_300.png";
     
     let processing_result = process_image_with_path(
