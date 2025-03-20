@@ -57,6 +57,12 @@ pub enum ProcessError {
         expected: usize,
         possible: usize
     },
+
+    #[error("BadColorsCount: expected={expected}, possible={possible}")]
+    ColorsCountExceedMax {
+        expected: usize,
+        possible: usize
+    },
 }
 
 fn fit_image_on_paper_printable_area(mut paper_sheet: PaperSheet, diamond_shape: &DiamondShape, rgb_img: RgbImage) -> (PaperSheet, RgbImage) {
@@ -80,6 +86,25 @@ fn fit_image_on_paper_printable_area(mut paper_sheet: PaperSheet, diamond_shape:
     (paper_sheet, result_img)
 }
 
+pub fn extract_palette_subset<P: AsRef<Path>> (
+    paper_sheet: PaperSheet,
+    colors_count: usize,
+    diamond_shape: DiamondShape,
+    image_path: P
+) -> Result<PaletteDmc, ProcessError> {
+    if colors_count > PALLETE_LEN_MAX {
+        return Err(ProcessError::ColorsCountExceedMax { expected: colors_count, possible: PALLETE_LEN_MAX });
+    }
+
+    // Fit image to printable area
+    let img_rgb = image::open(image_path)?
+        .to_rgb8();
+    let (_, img_rgb) = fit_image_on_paper_printable_area(paper_sheet, &diamond_shape, img_rgb);
+    
+    let dmc_full_palette = PaletteDmc::load_dmc_palette()?;
+    let dmc_subset_palette = dmc_full_palette.get_subset_closest_to(&img_rgb, colors_count)?;
+    Ok(dmc_subset_palette)
+}
 
 pub fn process_image_with_path<P: AsRef<Path>> (
     paper_sheet: PaperSheet,
@@ -91,8 +116,9 @@ pub fn process_image_with_path<P: AsRef<Path>> (
     output_path: &str,
 ) -> Result<(), ProcessError> {
     if colors_count > PALLETE_LEN_MAX {
-        unimplemented!("todo: add error colors_count > PALLETE_LEN_MAX");
+        return Err(ProcessError::ColorsCountExceedMax { expected: colors_count, possible: PALLETE_LEN_MAX });
     }
+
     // Fit image to printable area
     let img_rgb = image::open(image_path)?
         .to_rgb8();
@@ -187,3 +213,19 @@ fn test_process_image_with_path_testyard() {
     assert!(processing_result.is_ok(), "meh {processing_result:?}")
 }
 
+#[test]
+fn test_find_subset_palette() {
+    let colors_count = 12;
+    
+    let processing_result = extract_palette_subset(
+        PaperSheet::standard_a4(),
+        colors_count,
+        DiamondShape::common_round(),
+        "res/test_pink_300.jpg"
+    );
+
+    assert!(processing_result.is_ok());
+
+    let processing_result = processing_result.unwrap();
+    assert_eq!(processing_result.len(), colors_count);
+}
