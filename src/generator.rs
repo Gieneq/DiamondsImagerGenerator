@@ -57,12 +57,6 @@ pub enum ProcessError {
         expected: usize,
         possible: usize
     },
-
-    #[error("BadColorsCount: expected={expected}, possible={possible}")]
-    ColorsCountExceedMax {
-        expected: usize,
-        possible: usize
-    },
 }
 
 fn fit_image_on_paper_printable_area(mut paper_sheet: PaperSheet, diamond_shape: &DiamondShape, rgb_img: RgbImage) -> (PaperSheet, RgbImage) {
@@ -88,46 +82,51 @@ fn fit_image_on_paper_printable_area(mut paper_sheet: PaperSheet, diamond_shape:
 
 pub fn extract_palette_subset<P: AsRef<Path>> (
     paper_sheet: PaperSheet,
-    colors_count: usize,
+    provided_dmc_palette: PaletteDmc,
+    max_colors_count: usize,
     diamond_shape: DiamondShape,
     image_path: P
 ) -> Result<PaletteDmc, ProcessError> {
-    if colors_count > PALLETE_LEN_MAX {
-        return Err(ProcessError::ColorsCountExceedMax { expected: colors_count, possible: PALLETE_LEN_MAX });
-    }
+    let max_colors_count = max_colors_count.min(PALLETE_LEN_MAX);
 
     // Fit image to printable area
     let img_rgb = image::open(image_path)?
         .to_rgb8();
+
     let (_, img_rgb) = fit_image_on_paper_printable_area(paper_sheet, &diamond_shape, img_rgb);
     
-    let dmc_full_palette = PaletteDmc::load_dmc_palette()?;
-    let dmc_subset_palette = dmc_full_palette.get_subset_closest_to(&img_rgb, colors_count)?;
+    let dmc_subset_palette = provided_dmc_palette.get_subset_closest_to(&img_rgb, max_colors_count)?;
     Ok(dmc_subset_palette)
 }
 
 pub fn process_image_with_path<P: AsRef<Path>> (
     paper_sheet: PaperSheet,
-    colors_count: usize,
+    provided_dmc_palette: PaletteDmc,
+    max_colors_count: usize,
     diamond_shape: DiamondShape,
     image_path: P,
     preview_path: Option<P>,
     dmc_palette_path: Option<P>,
     output_path: &str,
-) -> Result<(), ProcessError> {
-    if colors_count > PALLETE_LEN_MAX {
-        return Err(ProcessError::ColorsCountExceedMax { expected: colors_count, possible: PALLETE_LEN_MAX });
-    }
+) -> Result<PaletteDmc, ProcessError> {
+    let max_colors_count = max_colors_count.min(PALLETE_LEN_MAX);
 
     // Fit image to printable area
     let img_rgb = image::open(image_path)?
         .to_rgb8();
-    let (paper_sheet, img_rgb) = fit_image_on_paper_printable_area(paper_sheet, &diamond_shape, img_rgb);
+    let (paper_sheet, img_rgb) = fit_image_on_paper_printable_area(
+        paper_sheet, 
+        &diamond_shape, 
+        img_rgb
+    );
     
-    let dmc_full_palette = PaletteDmc::load_dmc_palette()?;
-    let dmc_subset_palette = dmc_full_palette.get_subset_closest_to(&img_rgb, colors_count)?;
+    let dmc_subset_palette = provided_dmc_palette.get_subset_closest_to(&img_rgb, max_colors_count)?;
 
-    let dithered_img = dithering_floyd_steinberg_rgb(img_rgb, PaletteRGB::from(&dmc_subset_palette));
+    let dithered_img = dithering_floyd_steinberg_rgb(
+        img_rgb, 
+        PaletteRGB::from(&dmc_subset_palette)
+    );
+    
     if let Some(path) = preview_path {
         dithered_img.save(path)?;
     }
@@ -158,74 +157,96 @@ pub fn process_image_with_path<P: AsRef<Path>> (
         output_path
     )?;
 
-    Ok(())
+    Ok(dmc_subset_palette)
 }
 
-#[test]
-fn test_process_image_with_path_a4_12_colors() {
-    let colors_count = 12;
+#[cfg(test)]
+mod test_generator {
+    use std::path::Path;
+
+    use crate::{
+        dmc::PaletteDmc, 
+        generator::extract_palette_subset, 
+        types::{
+            DiamondShape, 
+            PaperSheet
+        }
+    };
+    use super::{
+        process_image_with_path, 
+        ProcessError
+    };
+
+    fn full_generate_helper(
+        paper_sheet: PaperSheet,
+        provided_dmc_palette: PaletteDmc,
+        image_filename: &str,
+        max_colors_count: usize
+    ) -> Result<PaletteDmc, ProcessError> {
+        let filename_stem = Path::new(image_filename)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap();
+
+        process_image_with_path(
+            paper_sheet,
+            provided_dmc_palette,
+            max_colors_count,
+            DiamondShape::common_round(),
+            format!("res/{image_filename}").as_str(),
+            Some(format!("res/outputs/{filename_stem}_preview.png").as_str()),
+            Some(format!("res/outputs/{filename_stem}_dmc_palette.json").as_str()),
+            format!("res/outputs/{filename_stem}.pdf").as_str(),
+        )
+    }
+
+    #[test]
+    fn test_process_image_with_path_a4_max_12_colors() {
+        let max_colors_count = 12;
+        let processing_result = full_generate_helper(
+            PaperSheet::standard_a4(),
+            PaletteDmc::load_dmc_palette().unwrap(),
+            "test_pink_300.jpg",
+            max_colors_count
+        );
     
-    let processing_result = process_image_with_path(
-        PaperSheet::standard_a4(),
-        colors_count,
-        DiamondShape::common_round(),
-        "res/test_pink_300.jpg",
-        Some("res/outputs/test_pink_300_preview.png"),
-        Some("res/outputs/test_pink_300_dmc_palette.json"),
-        "res/outputs/test_pink.pdf",
-    );
+        assert!(processing_result.is_ok());
+        let processing_result = processing_result.unwrap();
 
-    assert!(processing_result.is_ok())
-}
+        assert!(processing_result.len() <= max_colors_count);
+    }
 
-#[test]
-fn test_process_image_with_path_a3_16_colors() {
-    let colors_count = 16;
+    #[test]
+    fn test_process_image_with_path_a3_max_32_colors() {
+        let max_colors_count = 32;
+        let processing_result = full_generate_helper(
+            PaperSheet::standard_a3(),
+            PaletteDmc::load_dmc_palette().unwrap(),
+            "test_yellow_600.jpg",
+            max_colors_count
+        );
     
-    let processing_result = process_image_with_path(
-        PaperSheet::standard_a3(),
-        colors_count,
-        DiamondShape::common_round(),
-        "res/test_pink_300.jpg",
-        Some("res/outputs/test_pink_300_preview_a3.png"),
-        Some("res/outputs/test_pink_300_dmc_palette_a3.json"),
-        "res/outputs/test_pink_a3.pdf",
-    );
+        assert!(processing_result.is_ok());
+        let processing_result = processing_result.unwrap();
 
-    assert!(processing_result.is_ok())
-}
-
-#[test]
-fn test_process_image_with_path_testyard() {
-    let colors_count = 21; // 22 seems too many
-    let src_name = "test_grass_300.png";
+        assert!(processing_result.len() <= max_colors_count);
+    }
     
-    let processing_result = process_image_with_path(
-        PaperSheet::standard_a4(),
-        colors_count,
-        DiamondShape::common_round(),
-        format!("res/{src_name}").as_str(),
-        Some(format!("res/outputs/{src_name}_preview.png").as_str()),
-        Some(format!("res/outputs/{src_name}_dmc_palette_a3.json").as_str()),
-        format!("res/outputs/{src_name}_print.pdf").as_str()
-    );
-
-    assert!(processing_result.is_ok(), "meh {processing_result:?}")
-}
-
-#[test]
-fn test_find_subset_palette() {
-    let colors_count = 12;
+    #[test]
+    fn test_find_subset_palette() {
+        let provided_dmc_palette = PaletteDmc::load_dmc_palette().unwrap();
+        let max_colors_count = 12;
+        
+        let processing_result = extract_palette_subset(
+            PaperSheet::standard_a4(),
+            provided_dmc_palette,
+            max_colors_count,
+            DiamondShape::common_round(),
+            "res/test_pink_300.jpg"
+        );
+        assert!(processing_result.is_ok());
     
-    let processing_result = extract_palette_subset(
-        PaperSheet::standard_a4(),
-        colors_count,
-        DiamondShape::common_round(),
-        "res/test_pink_300.jpg"
-    );
-
-    assert!(processing_result.is_ok());
-
-    let processing_result = processing_result.unwrap();
-    assert_eq!(processing_result.len(), colors_count);
+        let processing_result = processing_result.unwrap();
+        assert!(processing_result.len() <= max_colors_count);
+    }
 }

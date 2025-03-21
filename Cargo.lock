@@ -364,8 +364,8 @@ dependencies = [
 
 [[package]]
 name = "ditherum"
-version = "0.2.1"
-source = "git+https://github.com/Gieneq/Ditherum.git#a0001b5bf705e9f428d3fe1ba0c532431e45227e"
+version = "0.2.2"
+source = "git+https://github.com/Gieneq/Ditherum.git#d1b70d620269adcb715cb5159b0d337da3792a9b"
 dependencies = [
  "anyhow",
  "clap",

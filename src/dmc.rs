@@ -159,39 +159,14 @@ impl PaletteDmc {
         Ok(dmc_palette)
     }
 
-    pub fn get_subset_closest_to(self, img_rgb: &RgbImage, colors_count: usize) -> Result<Self, DmcError> {
-        // let mut result_dmc_vec: Vec<Dmc> = vec![];
-
-        // rgb_palette.iter().for_each(|matched_color| {
-        //     let closest_color = PaletteRGB::from(&self).find_closest_by_rgb(matched_color);
-
-        //     // find line & move it out
-        //     let color_index = self.0.iter().position(|dmc| dmc.color == closest_color).expect("Should be inside DMC Palette");
-        //     let removed_dmc = self.0.remove(color_index);
-        //     println!("closest:{:?} ~ {:?}", removed_dmc, matched_color);
-        //     result_dmc_vec.push(removed_dmc);
-        // });
-
+    pub fn get_subset_closest_to(self, img_rgb: &RgbImage, max_colors_count: usize) -> Result<Self, DmcError> {
         let rgb_palette = PaletteRGB::from(&self);
-        let subset_palette = rgb_palette.clone().try_find_closest_subset_with_image(
-            colors_count, 
-            img_rgb, 
-            true);
-
-        let subset_palette = match subset_palette {
-            Ok(palette) => palette,
-            Err(e) => {
-                if let PaletteError::RequestedTooManyColors { requested: _, possible } = e {
-                    println!("RequestedTooManyColors: {e}");
-                    rgb_palette.try_find_closest_subset_with_image(
-                        possible, 
-                        img_rgb, 
-                        true)?
-                } else {
-                    return Err(e.into());
-                }
-            }
-        };
+        let subset_palette = rgb_palette
+            .clone()
+            .try_find_closest_subset_using_image(
+                max_colors_count, 
+                img_rgb
+            )?;
 
         let result_dmc_vec: Option<Vec<Dmc>> = subset_palette.iter()
             .map(|color| {
