@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet}, 
     io::BufReader, 
-    ops::Deref
+    ops::Deref, path::Path
 };
 
 use ditherum::{
@@ -44,14 +44,14 @@ pub enum DmcError {
     ColorNotFound,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct DmcData {
     pub code: String,
     pub name: String,
     pub color: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct PaletteDmcData(pub Vec<DmcData>);
 
 
@@ -72,7 +72,7 @@ pub struct ImageDmcLegendRecord {
 #[derive(Debug, Clone)]
 pub struct ImageDmcLegend(pub HashMap<ColorRGB, ImageDmcLegendRecord>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PaletteDmc(pub Vec<Dmc>);
 
 impl TryFrom<DmcData> for Dmc {
@@ -137,6 +137,31 @@ impl TryFrom<PaletteDmcData> for PaletteDmc {
     }
 }
 
+impl From<Dmc> for DmcData {
+    fn from(value: Dmc) -> Self {
+        let colorhash = format!("#{:02X}{:02X}{:02X}",
+            value.color[0],
+            value.color[1],
+            value.color[2],
+        );
+        Self {
+            code: value.code,
+            name: value.name,
+            color: colorhash
+        }
+    }
+}
+
+impl From<PaletteDmc> for PaletteDmcData {
+    fn from(value: PaletteDmc) -> Self {
+        let dmc_vec = value.0
+            .into_iter()
+            .map(DmcData::from)
+            .collect::<Vec<_>>();
+        PaletteDmcData(dmc_vec)
+    }
+}
+
 impl Deref for PaletteDmc {
     type Target = Vec<Dmc>;
     fn deref(&self) -> &Self::Target {
@@ -152,7 +177,11 @@ impl From<&PaletteDmc> for PaletteRGB {
 
 impl PaletteDmc {
     pub fn load_dmc_palette() -> Result<PaletteDmc, DmcError> {
-        let file = std::fs::File::open(PALETTE_PATH)?;
+        Self::load_dmc_palette_from(PALETTE_PATH)
+    }
+
+    pub fn load_dmc_palette_from<P: AsRef<Path>>(path: P) -> Result<PaletteDmc, DmcError> {
+        let file = std::fs::File::open(path)?;
         let file_reader = BufReader::new(file);
         let dmc_palette_data: PaletteDmcData = serde_json::from_reader(file_reader)?;
         let dmc_palette = PaletteDmc::try_from(dmc_palette_data)?;
@@ -277,4 +306,45 @@ fn test_finding_closest_dmc_not_enough_colors() {
 
     let closest_palette = closest_palette.unwrap();
     assert_eq!(expected_colors_count, closest_palette.len());
+}
+
+#[test]
+fn test_dmc_to_dmcdata_convertion() {
+    let dmc = Dmc{
+        code: format!("DX123"),
+        name: format!("Some name"),
+        color: ColorRGB([
+            255,
+            0,
+            15
+        ])
+    };
+    let dmc_data: DmcData = dmc.into();
+    assert_eq!(dmc_data.color, "#FF000F".to_string());
+}
+
+#[test]
+fn test_palettedmc_convertions() {
+    let dmc1 = Dmc{
+        code: format!("DX123"),
+        name: format!("Some name"),
+        color: ColorRGB([
+            255,
+            0,
+            15
+        ])
+    };
+    let dmc2 = Dmc{
+        code: format!("DX124"),
+        name: format!("Some fancier name"),
+        color: ColorRGB([
+            213,
+            127,
+            0
+        ])
+    };
+    let src_palette_dmc = PaletteDmc(vec![dmc1, dmc2]);
+    let converted_data: PaletteDmcData = src_palette_dmc.clone().into();
+    let recreated_palette_dmc: PaletteDmc = converted_data.try_into().unwrap();
+    assert_eq!(src_palette_dmc, recreated_palette_dmc);
 }
